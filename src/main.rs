@@ -24,35 +24,14 @@ fn hit_sphere(center: &Point3, radius: f64, r: &Ray) -> bool {
 }
 
 fn ray_color(r: &Ray) -> Color {
-    if hit_sphere(
-        &Point3 {
-            x: 0.0,
-            y: 0.0,
-            z: -1.0,
-        },
-        0.5,
-        r,
-    ) {
-        Color {
-            x: 1.0,
-            y: 0.0,
-            z: 0.0,
-        }
+    if hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, r) {
+        Color::new(1.0, 0.0, 0.0)
     } else {
         let unit_dir = vec3::normalized(&r.dir);
         let t = 0.5 * (unit_dir.y + 1.0);
 
         // Linear blend from white to blue
-        Color {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        } * (1.0 - t)
-            + Color {
-                x: 0.5,
-                y: 0.7,
-                z: 1.0,
-            } * t
+        Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.0, 0.0, 1.0) * t
     }
 }
 
@@ -71,26 +50,10 @@ fn main() {
     let viewport_width = aspect_ratio * viewport_height;
     let focal_length = 1.0;
 
-    let origin = Point3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    };
-    let horizontal = Vec3 {
-        x: viewport_width,
-        y: 0.0,
-        z: 0.0,
-    };
-    let vertical = Vec3 {
-        x: 0.0,
-        y: viewport_height,
-        z: 0.0,
-    };
-    let depth = Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: focal_length,
-    };
+    let origin = Point3::new(0.0, 0.0, 0.0);
+    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
+    let vertical = Vec3::new(0.0, viewport_height, 0.0);
+    let depth = Vec3::new(0.0, 0.0, focal_length);
     let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - depth;
 
     let mut file = match File::create(path) {

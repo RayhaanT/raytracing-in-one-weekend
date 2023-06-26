@@ -8,23 +8,52 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 use crate::ray::Ray;
-use crate::vec3::{Color, Point3, Vec3};
+use crate::vec3::*;
+
+fn hit_sphere(center: &Point3, radius: f64, r: &Ray) -> bool {
+    // Solving for parameters t such that r(t) is on the sphere,
+    // i.e. r(t) has distance radius^2 from center
+    // i.e. (r(t) - center) \cdot (r(t) - center) = radius^2
+    // Below comes from above equation to check if there are solutions for t
+    let oc = r.origin - *center;
+    let a = dot(&r.dir, &r.dir);
+    let b = 2.0 * dot(&oc, &r.dir);
+    let c = dot(&oc, &oc) - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+    discriminant > 0.0
+}
 
 fn ray_color(r: &Ray) -> Color {
-    let unit_dir = vec3::normalized(&r.dir);
-    let t = 0.5 * (unit_dir.y + 1.0);
+    if hit_sphere(
+        &Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: -1.0,
+        },
+        0.5,
+        r,
+    ) {
+        Color {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        }
+    } else {
+        let unit_dir = vec3::normalized(&r.dir);
+        let t = 0.5 * (unit_dir.y + 1.0);
 
-    // Linear blend from white to blue
-    Color {
-        x: 1.0,
-        y: 1.0,
-        z: 1.0,
-    } * (1.0 - t)
-        + Color {
-            x: 0.5,
-            y: 0.7,
+        // Linear blend from white to blue
+        Color {
+            x: 1.0,
+            y: 1.0,
             z: 1.0,
-        } * t
+        } * (1.0 - t)
+            + Color {
+                x: 0.5,
+                y: 0.7,
+                z: 1.0,
+            } * t
+    }
 }
 
 fn main() {

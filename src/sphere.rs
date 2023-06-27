@@ -6,6 +6,12 @@ pub struct Sphere {
     radius: f64,
 }
 
+impl Sphere {
+    pub fn new(center: Point3, radius: f64) -> Sphere {
+        Sphere { center, radius }
+    }
+}
+
 impl Hittable for Sphere {
     fn hit(&self, r: &crate::ray::Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
         // Solving for parameters t such that r(t) is on the sphere,
@@ -34,11 +40,8 @@ impl Hittable for Sphere {
         }
 
         let p = r.at(root);
-        *rec = HitRecord {
-            p,
-            t: root,
-            normal: (p - self.center) / self.radius,
-        };
+        let out_norm = (p - self.center) / self.radius;
+        *rec = HitRecord::new(p, root, r, &out_norm);
 
         true
     }

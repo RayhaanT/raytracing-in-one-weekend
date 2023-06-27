@@ -10,28 +10,38 @@ use std::path::Path;
 use crate::ray::Ray;
 use crate::vec3::*;
 
-fn hit_sphere(center: &Point3, radius: f64, r: &Ray) -> bool {
+fn hit_sphere(center: &Point3, radius: f64, r: &Ray) -> f64 {
     // Solving for parameters t such that r(t) is on the sphere,
     // i.e. r(t) has distance radius^2 from center
     // i.e. (r(t) - center) \cdot (r(t) - center) = radius^2
-    // Below comes from above equation to check if there are solutions for t
+    // Below comes from above equation to solve for t w quadratic formula
+    // Replacing b with h where b = 2h allows symbolic simplification
     let oc = r.origin - *center;
-    let a = dot(&r.dir, &r.dir);
-    let b = 2.0 * dot(&oc, &r.dir);
-    let c = dot(&oc, &oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    discriminant > 0.0
+    let a = r.dir.length_sq();
+    let h = dot(&oc, &r.dir);
+    let c = oc.length_sq() - radius * radius;
+    let discriminant = h * h - a * c;
+
+    if discriminant < 0.0 {
+        -1.0
+    } else {
+        (-h - discriminant.sqrt()) / a
+    }
 }
 
 fn ray_color(r: &Ray) -> Color {
-    if hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, r) {
-        Color::new(1.0, 0.0, 0.0)
+    let t = hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, r);
+    if t > 0.0 {
+        // Delta from sphere center to hit surface point
+        let norm = normalized(&(r.at(t) - Vec3::new(0.0, 0.0, -1.0)));
+        // Convert norm to color
+        Color::new(norm.x + 1.0, norm.y + 1.0, norm.z + 1.0) * 0.5
     } else {
         let unit_dir = vec3::normalized(&r.dir);
         let t = 0.5 * (unit_dir.y + 1.0);
 
         // Linear blend from white to blue
-        Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.0, 0.0, 1.0) * t
+        Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
     }
 }
 

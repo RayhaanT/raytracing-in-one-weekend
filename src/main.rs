@@ -21,12 +21,17 @@ use crate::ray::Ray;
 use crate::sphere::Sphere;
 use crate::vec3::*;
 
-fn ray_color(r: &Ray, world: &HittableList) -> Color {
+fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
     let mut rec = HitRecord::blank();
 
+    if depth == 0 {
+        return Color::new(0.0, 0.0, 0.0);
+    }
+
     if world.hit(r, 0.0, f64::MAX, &mut rec) {
-        // Convert norm to color
-        (Color::new(1.0, 1.0, 1.0) + rec.normal) * 0.5
+        // The point that the reflected ray will bounce through
+        let target = rec.p + rec.normal + Vec3::rand_in_sphere();
+        ray_color(&Ray::new(rec.p, target - rec.p), world, depth - 1) * 0.5
     } else {
         let unit_dir = vec3::normalized(&r.dir);
         let t = 0.5 * (unit_dir.y + 1.0);
@@ -46,7 +51,7 @@ fn main() {
     let image_width = 400;
     let image_height = (image_width as f64 / aspect_ratio) as u32;
     let samples_per_pixel = 100;
-    let mut rng = rand::thread_rng();
+    let max_bounce_depth = 50;
 
     // World
     let mut world = HittableList {
@@ -75,11 +80,11 @@ fn main() {
             let mut pixel_color = Color::new(0.0, 0.0, 0.0);
 
             for _ in 0..samples_per_pixel {
-                let u = (j as f64 + rand_unit(&mut rng)) / (image_width as f64 - 1.0);
-                let v = (i as f64 + rand_unit(&mut rng)) / (image_height as f64 - 1.0);
+                let u = (j as f64 + rand_unit()) / (image_width as f64 - 1.0);
+                let v = (i as f64 + rand_unit()) / (image_height as f64 - 1.0);
 
                 let ray = cam.get_ray(u, v);
-                pixel_color += ray_color(&ray, &world);
+                pixel_color += ray_color(&ray, &world, max_bounce_depth);
             }
 
             crate::color::write_color(&mut file, &pixel_color, samples_per_pixel);

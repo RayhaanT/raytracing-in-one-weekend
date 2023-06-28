@@ -1,3 +1,4 @@
+use crate::math::{rand_range, rand_unit};
 use core::fmt;
 use std::ops;
 
@@ -19,6 +20,27 @@ impl Vec3 {
 
     pub fn length_sq(&self) -> f64 {
         self.x * self.x + self.y * self.y + self.z * self.z
+    }
+
+    pub fn rand() -> Vec3 {
+        Vec3::new(rand_unit(), rand_unit(), rand_unit())
+    }
+
+    pub fn rand_range(min: f64, max: f64) -> Vec3 {
+        Vec3::new(
+            rand_range(min, max),
+            rand_range(min, max),
+            rand_range(min, max),
+        )
+    }
+
+    pub fn rand_in_sphere() -> Vec3 {
+        loop {
+            let p = Vec3::rand_range(-1.0, 1.0);
+            if p.length_sq() < 1.0 {
+                return p;
+            }
+        }
     }
 }
 

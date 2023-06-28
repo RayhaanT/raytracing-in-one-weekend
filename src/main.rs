@@ -1,5 +1,7 @@
+mod camera;
 mod color;
 mod hittable;
+mod math;
 mod ray;
 mod sphere;
 mod vec3;
@@ -12,7 +14,9 @@ use std::rc::Rc;
 
 use hittable::HitRecord;
 
+use crate::camera::Camera;
 use crate::hittable::HittableList;
+use crate::math::rand_unit;
 use crate::ray::Ray;
 use crate::sphere::Sphere;
 use crate::vec3::*;
@@ -41,6 +45,8 @@ fn main() {
     let aspect_ratio = 16.0 / 9.0;
     let image_width = 400;
     let image_height = (image_width as f64 / aspect_ratio) as u32;
+    let samples_per_pixel = 100;
+    let mut rng = rand::thread_rng();
 
     // World
     let mut world = HittableList {
@@ -49,16 +55,8 @@ fn main() {
     world.add(Rc::new(Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5)));
     world.add(Rc::new(Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0)));
 
-    // Camera consts
-    let viewport_height = 2.0;
-    let viewport_width = aspect_ratio * viewport_height;
-    let focal_length = 1.0;
-
-    let origin = Point3::new(0.0, 0.0, 0.0);
-    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, viewport_height, 0.0);
-    let depth = Vec3::new(0.0, 0.0, focal_length);
-    let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - depth;
+    // Camera
+    let cam = Camera::new();
 
     let mut file = match File::create(path) {
         Ok(f) => BufWriter::new(f),
@@ -74,16 +72,17 @@ fn main() {
 
         // Cast a ray at each pixel in the image
         for j in 0..image_width {
-            let u = (j as f64) / (image_width as f64 - 1.0);
-            let v = (i as f64) / (image_height as f64 - 1.0);
+            let mut pixel_color = Color::new(0.0, 0.0, 0.0);
 
-            let r = Ray {
-                origin,
-                dir: lower_left_corner + horizontal * u + vertical * v - origin,
-            };
-            let pixel_color = ray_color(&r, &world);
+            for _ in 0..samples_per_pixel {
+                let u = (j as f64 + rand_unit(&mut rng)) / (image_width as f64 - 1.0);
+                let v = (i as f64 + rand_unit(&mut rng)) / (image_height as f64 - 1.0);
 
-            crate::color::write_color(&mut file, &pixel_color);
+                let ray = cam.get_ray(u, v);
+                pixel_color += ray_color(&ray, &world);
+            }
+
+            crate::color::write_color(&mut file, &pixel_color, samples_per_pixel);
         }
     }
 

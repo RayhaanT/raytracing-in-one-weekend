@@ -42,6 +42,10 @@ impl Vec3 {
             }
         }
     }
+
+    pub fn rand_unit() -> Vec3 {
+        normalized(Vec3::rand_in_sphere())
+    }
 }
 
 impl ops::Add<Vec3> for Vec3 {
@@ -195,6 +199,6 @@ pub fn cross(a: &Vec3, b: &Vec3) -> Vec3 {
     }
 }
 
-pub fn normalized(a: &Vec3) -> Vec3 {
-    *a / a.length()
+pub fn normalized(a: Vec3) -> Vec3 {
+    a / a.length()
 }

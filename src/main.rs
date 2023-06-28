@@ -28,12 +28,14 @@ fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    if world.hit(r, 0.0, f64::MAX, &mut rec) {
+    // 0.001 min Removes shadow acne. Don't want bounced rays colliding
+    // with the same surface at t = 1e-8 from fp inaccuracies
+    if world.hit(r, 0.001, f64::MAX, &mut rec) {
         // The point that the reflected ray will bounce through
-        let target = rec.p + rec.normal + Vec3::rand_in_sphere();
+        let target = rec.p + rec.normal + Vec3::rand_unit();
         ray_color(&Ray::new(rec.p, target - rec.p), world, depth - 1) * 0.5
     } else {
-        let unit_dir = vec3::normalized(&r.dir);
+        let unit_dir = vec3::normalized(r.dir);
         let t = 0.5 * (unit_dir.y + 1.0);
 
         // Linear blend from white to blue

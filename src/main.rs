@@ -17,7 +17,7 @@ use hittable::HitRecord;
 
 use crate::camera::Camera;
 use crate::hittable::HittableList;
-use crate::material::{Dielectric, Lambertian, Metal};
+use crate::material::*;
 use crate::math::rand_unit;
 use crate::ray::Ray;
 use crate::sphere::Sphere;
@@ -63,7 +63,7 @@ fn main() {
     let max_bounce_depth = 50;
 
     // Materials
-    let material_ground = Rc::new(Lambertian::new(0.8, 0.8, 0.0));
+    let material_ground = Rc::new(Lambertian::new(0.8, 0.8, 0.6));
     // let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
     let material_center = Rc::new(Dielectric::new(1.5));
     let material_left = Rc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
@@ -80,8 +80,8 @@ fn main() {
         material_center.clone(),
     )));
     world.add(Rc::new(Sphere::new(
-        Point3::new(0.0, -100.5, -1.0),
-        100.0,
+        Point3::new(0.0, -1000.5, -1.0),
+        1000.0,
         material_ground.clone(),
     )));
     world.add(Rc::new(Sphere::new(
@@ -95,18 +95,48 @@ fn main() {
         material_right.clone(),
     )));
 
+    // Generate balls
+    let radius = 0.2;
+    for x in -10..10 {
+        for z in -10..10 {
+            let center = Point3::new(
+                x as f64 + 0.9 * rand_unit(),
+                -0.5 + radius,
+                z as f64 + 0.9 * rand_unit(),
+            );
+
+            let material: Rc<dyn Material>;
+            let mat_type = rand_unit();
+
+            if mat_type < 0.7 {
+                material = Rc::new(Lambertian {
+                    albedo: Color::rand() * Color::rand(),
+                });
+            } else if mat_type < 0.9 {
+                material = Rc::new(Metal {
+                    albedo: Color::rand_range(0.5, 1.0),
+                    fuzz: rand_unit(),
+                });
+            } else {
+                material = Rc::new(Dielectric::new(rand_unit() + 1.0));
+            }
+
+            world.add(Rc::new(Sphere::new(center, radius, material.clone())));
+        }
+    }
+
     // Camera
-    let camera_pos = Point3::new(3.0, 3.0, 2.0);
+    let camera_pos = Point3::new(3.0, 1.0, 2.0);
     let look_at = Point3::new(0.0, 0.0, -1.0);
     let world_up = Point3::new(0.0, 1.0, 0.0);
     let dist_to_focus = (camera_pos - look_at).length();
-    let aperture = 2.0;
+    let aperture = 0.1;
 
     let cam = Camera::new(
         camera_pos,
         look_at,
         world_up,
-        20.0,
+        30.0,
         aspect_ratio,
         aperture,
         dist_to_focus,

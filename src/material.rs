@@ -11,7 +11,7 @@ pub trait Material {
 }
 
 pub struct Lambertian {
-    albedo: Color,
+    pub albedo: Color,
 }
 
 impl Material for Lambertian {
@@ -44,8 +44,8 @@ impl Lambertian {
 }
 
 pub struct Metal {
-    albedo: Color,
-    fuzz: f64,
+    pub albedo: Color,
+    pub fuzz: f64,
 }
 
 impl Material for Metal {

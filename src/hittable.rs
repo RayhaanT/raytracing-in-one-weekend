@@ -48,9 +48,7 @@ impl HitRecord {
             t: 0.0,
             front_face: false,
             normal: Vec3::new(0.0, 0.0, 0.0),
-            mat: Rc::new(Lambertian {
-                albedo: Color::new(0.0, 0.0, 0.0),
-            }),
+            mat: Rc::new(Lambertian::new(0.0, 0.0, 0.0)),
         }
     }
 }

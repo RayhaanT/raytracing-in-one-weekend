@@ -11,7 +11,7 @@ pub trait Material {
 }
 
 pub struct Lambertian {
-    pub albedo: Color,
+    albedo: Color,
 }
 
 impl Material for Lambertian {
@@ -44,7 +44,8 @@ impl Lambertian {
 }
 
 pub struct Metal {
-    pub albedo: Color,
+    albedo: Color,
+    fuzz: f64,
 }
 
 impl Material for Metal {
@@ -56,7 +57,7 @@ impl Material for Metal {
         scattered: &mut Ray,
     ) -> bool {
         let reflected = normalized(r_in.dir).reflect(rec.normal);
-        *scattered = Ray::new(rec.p, reflected);
+        *scattered = Ray::new(rec.p, reflected + Vec3::rand_in_sphere() * self.fuzz);
         *attenuation = self.albedo;
 
         // Don't scatter if inside
@@ -65,9 +66,10 @@ impl Material for Metal {
 }
 
 impl Metal {
-    pub fn new(r: f64, g: f64, b: f64) -> Metal {
+    pub fn new(r: f64, g: f64, b: f64, fuzz: f64) -> Metal {
         Metal {
             albedo: Color::new(r, g, b),
+            fuzz,
         }
     }
 }

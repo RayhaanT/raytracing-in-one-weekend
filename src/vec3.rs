@@ -22,6 +22,11 @@ impl Vec3 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
 
+    pub fn near_zero(&self) -> bool {
+        let tol = 1e-8;
+        self.x.abs() < tol && self.y.abs() < tol && self.z.abs() < tol
+    }
+
     pub fn rand() -> Vec3 {
         Vec3::new(rand_unit(), rand_unit(), rand_unit())
     }
@@ -45,6 +50,11 @@ impl Vec3 {
 
     pub fn rand_unit() -> Vec3 {
         normalized(Vec3::rand_in_sphere())
+    }
+
+    pub fn reflect(&self, surface_normal: Vec3) -> Vec3 {
+        // Perfect reflection of self across surface with given normal
+        *self - surface_normal * 2.0 * dot(self, &surface_normal)
     }
 }
 
@@ -101,7 +111,7 @@ impl ops::Mul<Vec3> for Vec3 {
         Vec3 {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
-            z: self.z * rhs.x,
+            z: self.z * rhs.z,
         }
     }
 }

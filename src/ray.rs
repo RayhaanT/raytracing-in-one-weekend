@@ -13,4 +13,11 @@ impl Ray {
     pub fn new(origin: Point3, dir: Vec3) -> Ray {
         Ray { origin, dir }
     }
+
+    pub fn blank() -> Ray {
+        Ray {
+            origin: Point3::new(0.0, 0.0, 0.0),
+            dir: Vec3::new(0.0, 0.0, 0.0),
+        }
+    }
 }

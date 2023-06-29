@@ -1,6 +1,7 @@
 mod camera;
 mod color;
 mod hittable;
+mod material;
 mod math;
 mod ray;
 mod sphere;
@@ -16,6 +17,7 @@ use hittable::HitRecord;
 
 use crate::camera::Camera;
 use crate::hittable::HittableList;
+use crate::material::{Lambertian, Metal};
 use crate::math::rand_unit;
 use crate::ray::Ray;
 use crate::sphere::Sphere;
@@ -31,9 +33,14 @@ fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
     // 0.001 min Removes shadow acne. Don't want bounced rays colliding
     // with the same surface at t = 1e-8 from fp inaccuracies
     if world.hit(r, 0.001, f64::MAX, &mut rec) {
-        // The point that the reflected ray will bounce through
-        let target = rec.p + rec.normal + Vec3::rand_unit();
-        ray_color(&Ray::new(rec.p, target - rec.p), world, depth - 1) * 0.5
+        let mut scattered = Ray::blank();
+        let mut attenuation = Color::new(0.0, 0.0, 0.0);
+
+        if rec.mat.scatter(r, &rec, &mut attenuation, &mut scattered) {
+            attenuation * ray_color(&scattered, world, depth - 1)
+        } else {
+            Color::new(0.0, 0.0, 0.0)
+        }
     } else {
         let unit_dir = vec3::normalized(r.dir);
         let t = 0.5 * (unit_dir.y + 1.0);
@@ -55,12 +62,36 @@ fn main() {
     let samples_per_pixel = 100;
     let max_bounce_depth = 50;
 
+    // Materials
+    let material_ground = Rc::new(Lambertian::new(0.8, 0.8, 0.0));
+    let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
+    let material_left = Rc::new(Metal::new(0.8, 0.8, 0.8));
+    let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2));
+
     // World
     let mut world = HittableList {
         objects: Vec::new(),
     };
-    world.add(Rc::new(Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5)));
-    world.add(Rc::new(Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0)));
+    world.add(Rc::new(Sphere::new(
+        Point3::new(0.0, 0.0, -1.0),
+        0.5,
+        material_center.clone(),
+    )));
+    world.add(Rc::new(Sphere::new(
+        Point3::new(0.0, -100.5, -1.0),
+        100.0,
+        material_ground.clone(),
+    )));
+    world.add(Rc::new(Sphere::new(
+        Point3::new(-1.0, 0.0, -1.0),
+        0.5,
+        material_left.clone(),
+    )));
+    world.add(Rc::new(Sphere::new(
+        Point3::new(1.0, 0.0, -1.0),
+        0.5,
+        material_right.clone(),
+    )));
 
     // Camera
     let cam = Camera::new();

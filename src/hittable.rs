@@ -1,13 +1,15 @@
+use crate::material::{Lambertian, Material};
 use crate::ray::Ray;
 use crate::vec3::*;
 use std::rc::Rc;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct HitRecord {
     pub p: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
+    pub mat: Rc<dyn Material>,
 }
 
 impl HitRecord {
@@ -21,7 +23,13 @@ impl HitRecord {
         }
     }
 
-    pub fn new(p: Point3, t: f64, r: &Ray, outward_normal: &Vec3) -> HitRecord {
+    pub fn new(
+        p: Point3,
+        t: f64,
+        r: &Ray,
+        outward_normal: &Vec3,
+        mat: Rc<dyn Material>,
+    ) -> HitRecord {
         let mut front_face = false;
         let normal = HitRecord::get_face_normal(r, outward_normal, &mut front_face);
 
@@ -30,6 +38,7 @@ impl HitRecord {
             t,
             front_face,
             normal,
+            mat,
         }
     }
 
@@ -39,6 +48,9 @@ impl HitRecord {
             t: 0.0,
             front_face: false,
             normal: Vec3::new(0.0, 0.0, 0.0),
+            mat: Rc::new(Lambertian {
+                albedo: Color::new(0.0, 0.0, 0.0),
+            }),
         }
     }
 }
@@ -61,13 +73,13 @@ impl HittableList {
     }
 
     pub fn hit(&self, r: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
-        let mut temp_rec = *rec;
+        let mut temp_rec = rec.clone();
         let mut hit_anything = false;
 
         self.objects.iter().fold(t_max, |nearest, hittable| {
             if hittable.hit(r, t_min, nearest, &mut temp_rec) {
                 hit_anything = true;
-                *rec = temp_rec;
+                *rec = temp_rec.clone();
                 temp_rec.t
             } else {
                 nearest
@@ -77,5 +89,3 @@ impl HittableList {
         hit_anything
     }
 }
-
-

@@ -96,12 +96,20 @@ fn main() {
     )));
 
     // Camera
+    let camera_pos = Point3::new(3.0, 3.0, 2.0);
+    let look_at = Point3::new(0.0, 0.0, -1.0);
+    let world_up = Point3::new(0.0, 1.0, 0.0);
+    let dist_to_focus = (camera_pos - look_at).length();
+    let aperture = 2.0;
+
     let cam = Camera::new(
-        Point3::new(-2.0, 2.0, 1.0),
-        Point3::new(0.0, 0.0, -1.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        30.0,
+        camera_pos,
+        look_at,
+        world_up,
+        20.0,
         aspect_ratio,
+        aperture,
+        dist_to_focus,
     );
 
     let mut file = match File::create(path) {

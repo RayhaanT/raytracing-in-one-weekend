@@ -52,6 +52,15 @@ impl Vec3 {
         normalized(Vec3::rand_in_sphere())
     }
 
+    pub fn rand_in_disk() -> Vec3 {
+        loop {
+            let p = Vec3::new(rand_range(-1.0, 1.0), rand_range(-1.0, 1.0), 0.0);
+            if p.length_sq() < 1.0 {
+                return p;
+            }
+        }
+    }
+
     pub fn reflect(&self, surface_normal: Vec3) -> Vec3 {
         // Perfect reflection of self across surface with given normal
         *self - surface_normal * 2.0 * dot(self, &surface_normal)

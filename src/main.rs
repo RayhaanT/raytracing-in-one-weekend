@@ -67,8 +67,8 @@ fn main() {
     // let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
     let material_center = Rc::new(Dielectric::new(1.5));
     let material_left = Rc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
-    // let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
-    let material_right = Rc::new(Dielectric::new(1.5));
+    let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
+    // let material_right = Rc::new(Dielectric::new(1.5));
 
     // World
     let mut world = HittableList {
@@ -96,7 +96,13 @@ fn main() {
     )));
 
     // Camera
-    let cam = Camera::new();
+    let cam = Camera::new(
+        Point3::new(-2.0, 2.0, 1.0),
+        Point3::new(0.0, 0.0, -1.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        30.0,
+        aspect_ratio,
+    );
 
     let mut file = match File::create(path) {
         Ok(f) => BufWriter::new(f),

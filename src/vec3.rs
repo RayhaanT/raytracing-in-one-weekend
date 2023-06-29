@@ -56,6 +56,13 @@ impl Vec3 {
         // Perfect reflection of self across surface with given normal
         *self - surface_normal * 2.0 * dot(self, &surface_normal)
     }
+
+    pub fn refract(r: &Vec3, normal: &Vec3, ir_ratio: f64) -> Vec3 {
+        let cos_theta = dot(&-*r, normal).min(1.0);
+        let r_out_perp = (*r + (*normal * cos_theta)) * ir_ratio;
+        let r_out_parallel = *normal * -(1.0 - r_out_perp.length_sq()).abs().sqrt();
+        r_out_perp + r_out_parallel
+    }
 }
 
 impl ops::Add<Vec3> for Vec3 {

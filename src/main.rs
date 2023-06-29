@@ -17,7 +17,7 @@ use hittable::HitRecord;
 
 use crate::camera::Camera;
 use crate::hittable::HittableList;
-use crate::material::{Lambertian, Metal};
+use crate::material::{Dielectric, Lambertian, Metal};
 use crate::math::rand_unit;
 use crate::ray::Ray;
 use crate::sphere::Sphere;
@@ -64,9 +64,11 @@ fn main() {
 
     // Materials
     let material_ground = Rc::new(Lambertian::new(0.8, 0.8, 0.0));
-    let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
+    // let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
+    let material_center = Rc::new(Dielectric::new(1.5));
     let material_left = Rc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
-    let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
+    // let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
+    let material_right = Rc::new(Dielectric::new(1.5));
 
     // World
     let mut world = HittableList {

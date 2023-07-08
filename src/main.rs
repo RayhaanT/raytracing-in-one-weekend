@@ -84,9 +84,9 @@ fn main() {
 
     // Image consts
     let aspect_ratio = 16.0 / 9.0;
-    let image_width = 400;
+    let image_width = 1920;
     let image_height = (image_width as f64 / aspect_ratio) as usize;
-    let samples_per_pixel = 100;
+    let samples_per_pixel = 200;
     let max_bounce_depth = 50;
 
     // Materials
@@ -179,24 +179,17 @@ fn main() {
 
     let iworld = Arc::new(world);
     let (tx, rx) = mpsc::channel::<Scanline>();
-    let lines_per_thread = image_height / threads;
-    let mut joins = Vec::new();
 
+    // Spawn the original thread group
     for t in (0..threads).rev() {
         // Need to clone Arcs because of lifetimes
         let cam_temp = cam.clone();
         let world_temp = iworld.clone();
         let tx_temp = tx.clone();
-        let end = if t == threads - 1 {
-            image_height
-        } else {
-            (t + 1) * lines_per_thread
-        };
 
-        joins.push(thread::spawn(move || {
-            render_thread(
-                t * lines_per_thread,
-                end,
+        thread::spawn(move || {
+            render_line(
+                t,
                 cam_temp,
                 world_temp,
                 image_height,
@@ -205,27 +198,51 @@ fn main() {
                 max_bounce_depth,
                 tx_temp,
             )
-        }));
+        });
     }
-
-    // Need to drop this so treating rx as an iterator works properly
-    // Otherwise it thinks there's always a live sender because we only
-    // used clones of tx
-    drop(tx);
 
     // Receive scan lines and write into overall buffer
     let mut image_buffer: Vec<Vec<Color>> =
         vec![vec![Color::new(0.0, 0.0, 0.0); image_width]; image_height];
-    for received in rx {
+
+    // As each line is received, launch a new thread for the next line
+    // Spawn a thread for each scan line instead of blocking the whole
+    // image out into a stripe for each thread because stripes evaluate at
+    // different speeds depending on the scene, so some threads exit early
+    // This ensures 100% core utilization at the cost of more thread spawns/Arc clones
+    for l in threads..image_height {
+        let cam_temp = cam.clone();
+        let world_temp = iworld.clone();
+        let tx_temp = tx.clone();
+
+        let received = rx.recv().unwrap();
+        thread::spawn(move || {
+            render_line(
+                l,
+                cam_temp,
+                world_temp,
+                image_height,
+                image_width,
+                samples_per_pixel,
+                max_bounce_depth,
+                tx_temp,
+            )
+        });
         for (x, c) in received.buffer.iter().enumerate() {
             image_buffer[received.index][x] = *c;
         }
     }
 
-    // Wait for all threads to join
-    for j in joins {
-        j.join().unwrap();
+    // Receive the final thread group since there will still be 1 live batch
+    for _ in 0..threads {
+        let received = rx.recv().unwrap();
+        for (x, c) in received.buffer.iter().enumerate() {
+            image_buffer[received.index][x] = *c;
+        }
     }
+
+    drop(tx);
+    assert!(rx.try_iter().next().is_none());
 
     // Write into ppm file
     for row in image_buffer.iter().rev() {
@@ -237,9 +254,8 @@ fn main() {
     eprint!("\nDone.\n");
 }
 
-fn render_thread(
-    start: usize,
-    end: usize,
+fn render_line(
+    line: usize,
     cam: Arc<Camera>,
     world: Arc<HittableList>,
     image_height: usize,
@@ -248,26 +264,24 @@ fn render_thread(
     bounce_depth: u32,
     tx: Sender<Scanline>,
 ) {
-    for i in (start..end).rev() {
-        let mut scanline = Scanline::new(image_width, i);
-        eprint!("\rRendering scanline : {} \n", i);
-        io::stdout().flush().unwrap();
+    let mut scanline = Scanline::new(image_width, line);
+    eprint!("\rRendering scanline : {} \n", line);
+    io::stdout().flush().unwrap();
 
-        // Cast a ray at each pixel in the image
-        for j in 0..image_width {
-            let mut pixel_color = Color::new(0.0, 0.0, 0.0);
+    // Cast a ray at each pixel in the image
+    for j in 0..image_width {
+        let mut pixel_color = Color::new(0.0, 0.0, 0.0);
 
-            for _ in 0..samples {
-                let u = (j as f64 + rand_unit()) / (image_width as f64 - 1.0);
-                let v = (i as f64 + rand_unit()) / (image_height as f64 - 1.0);
+        for _ in 0..samples {
+            let u = (j as f64 + rand_unit()) / (image_width as f64 - 1.0);
+            let v = (line as f64 + rand_unit()) / (image_height as f64 - 1.0);
 
-                let ray = cam.get_ray(u, v);
-                pixel_color += ray_color(&ray, &world, bounce_depth);
-            }
-
-            scanline.buffer[j] = crate::color::process_color(&pixel_color, samples);
+            let ray = cam.get_ray(u, v);
+            pixel_color += ray_color(&ray, &world, bounce_depth);
         }
 
-        tx.send(scanline).unwrap();
+        scanline.buffer[j] = crate::color::process_color(&pixel_color, samples);
     }
+
+    tx.send(scanline).unwrap();
 }

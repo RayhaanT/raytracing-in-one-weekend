@@ -1,6 +1,6 @@
 use crate::{hittable::HitRecord, math::rand_unit, ray::Ray, vec3::*};
 
-pub trait Material {
+pub trait Material: Send + Sync {
     fn scatter(
         &self,
         r_in: &Ray,

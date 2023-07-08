@@ -11,7 +11,9 @@ use core::panic;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+use std::thread;
 
 use hittable::HitRecord;
 
@@ -22,6 +24,20 @@ use crate::math::rand_unit;
 use crate::ray::Ray;
 use crate::sphere::Sphere;
 use crate::vec3::*;
+
+struct Scanline {
+    buffer: Vec<Color>,
+    index: usize,
+}
+
+impl Scanline {
+    pub fn new(width: usize, index: usize) -> Scanline {
+        Scanline {
+            index,
+            buffer: vec![Color::new(0.0, 0.0, 0.0); width],
+        }
+    }
+}
 
 fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
     let mut rec = HitRecord::blank();
@@ -58,38 +74,38 @@ fn main() {
     // Image consts
     let aspect_ratio = 16.0 / 9.0;
     let image_width = 400;
-    let image_height = (image_width as f64 / aspect_ratio) as u32;
+    let image_height = (image_width as f64 / aspect_ratio) as usize;
     let samples_per_pixel = 100;
     let max_bounce_depth = 50;
 
     // Materials
-    let material_ground = Rc::new(Lambertian::new(0.8, 0.8, 0.6));
+    let material_ground = Arc::new(Lambertian::new(0.8, 0.8, 0.6));
     // let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
-    let material_center = Rc::new(Dielectric::new(1.5));
-    let material_left = Rc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
-    let material_right = Rc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
+    let material_center = Arc::new(Dielectric::new(1.5));
+    let material_left = Arc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
+    let material_right = Arc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
     // let material_right = Rc::new(Dielectric::new(1.5));
 
     // World
     let mut world = HittableList {
         objects: Vec::new(),
     };
-    world.add(Rc::new(Sphere::new(
+    world.add(Arc::new(Sphere::new(
         Point3::new(0.0, 0.0, -1.0),
         0.5,
         material_center.clone(),
     )));
-    world.add(Rc::new(Sphere::new(
+    world.add(Arc::new(Sphere::new(
         Point3::new(0.0, -1000.5, -1.0),
         1000.0,
         material_ground.clone(),
     )));
-    world.add(Rc::new(Sphere::new(
+    world.add(Arc::new(Sphere::new(
         Point3::new(-1.0, 0.0, -1.0),
         0.5,
         material_left.clone(),
     )));
-    world.add(Rc::new(Sphere::new(
+    world.add(Arc::new(Sphere::new(
         Point3::new(1.0, 0.0, -1.0),
         0.5,
         material_right.clone(),
@@ -105,23 +121,23 @@ fn main() {
                 z as f64 + 0.9 * rand_unit(),
             );
 
-            let material: Rc<dyn Material>;
+            let material: Arc<dyn Material>;
             let mat_type = rand_unit();
 
             if mat_type < 0.7 {
-                material = Rc::new(Lambertian {
+                material = Arc::new(Lambertian {
                     albedo: Color::rand() * Color::rand(),
                 });
             } else if mat_type < 0.9 {
-                material = Rc::new(Metal {
+                material = Arc::new(Metal {
                     albedo: Color::rand_range(0.5, 1.0),
                     fuzz: rand_unit(),
                 });
             } else {
-                material = Rc::new(Dielectric::new(rand_unit() + 1.0));
+                material = Arc::new(Dielectric::new(rand_unit() + 1.0));
             }
 
-            world.add(Rc::new(Sphere::new(center, radius, material.clone())));
+            world.add(Arc::new(Sphere::new(center, radius, material.clone())));
         }
     }
 
@@ -132,7 +148,7 @@ fn main() {
     let dist_to_focus = (camera_pos - look_at).length();
     let aperture = 0.1;
 
-    let cam = Camera::new(
+    let cam = Arc::new(Camera::new(
         camera_pos,
         look_at,
         world_up,
@@ -140,7 +156,7 @@ fn main() {
         aspect_ratio,
         aperture,
         dist_to_focus,
-    );
+    ));
 
     let mut file = match File::create(path) {
         Ok(f) => BufWriter::new(f),
@@ -150,25 +166,99 @@ fn main() {
     let header = format!("P3\n{} {}\n255\n", image_width, image_height);
     file.write(header.as_bytes()).unwrap();
 
-    for i in (0..image_height).rev() {
-        eprint!("\rScanlines remaining: {} \n", i);
+    let iworld = Arc::new(world);
+    let threads = 12;
+    let (tx, rx) = mpsc::channel::<Scanline>();
+    let lines_per_thread = image_height / threads;
+    let mut joins = Vec::new();
+
+    for t in (0..threads).rev() {
+        // Need to clone Arcs because of lifetimes
+        let cam_temp = cam.clone();
+        let world_temp = iworld.clone();
+        let tx_temp = tx.clone();
+        let end = if t == threads - 1 {
+            image_height
+        } else {
+            (t + 1) * lines_per_thread
+        };
+
+        joins.push(thread::spawn(move || {
+            render_thread(
+                t * lines_per_thread,
+                end,
+                cam_temp,
+                world_temp,
+                image_height,
+                image_width,
+                samples_per_pixel,
+                max_bounce_depth,
+                tx_temp,
+            )
+        }));
+    }
+
+    // Need to drop this so treating rx as an iterator works properly
+    // Otherwise it thinks there's always a live sender because we only
+    // used clones of tx
+    drop(tx);
+
+    // Receive scan lines and write into overall buffer
+    let mut image_buffer: Vec<Vec<Color>> =
+        vec![vec![Color::new(0.0, 0.0, 0.0); image_width]; image_height];
+    for received in rx {
+        println!("received: {}", received.index);
+        for (x, c) in received.buffer.iter().enumerate() {
+            image_buffer[received.index][x] = *c;
+        }
+    }
+
+    // Wait for all threads to join
+    for j in joins {
+        j.join().unwrap();
+    }
+
+    // Write into ppm file
+    for row in image_buffer.iter().rev() {
+        for pixel in row {
+            crate::color::write_color(&mut file, &pixel);
+        }
+    }
+
+    eprint!("\nDone.\n");
+}
+
+fn render_thread(
+    start: usize,
+    end: usize,
+    cam: Arc<Camera>,
+    world: Arc<HittableList>,
+    image_height: usize,
+    image_width: usize,
+    samples: u32,
+    bounce_depth: u32,
+    tx: Sender<Scanline>,
+) {
+    for i in (start..end).rev() {
+        let mut scanline = Scanline::new(image_width, i);
+        // eprint!("\rRendering scanline : {} \n", i);
         io::stdout().flush().unwrap();
 
         // Cast a ray at each pixel in the image
         for j in 0..image_width {
             let mut pixel_color = Color::new(0.0, 0.0, 0.0);
 
-            for _ in 0..samples_per_pixel {
+            for _ in 0..samples {
                 let u = (j as f64 + rand_unit()) / (image_width as f64 - 1.0);
                 let v = (i as f64 + rand_unit()) / (image_height as f64 - 1.0);
 
                 let ray = cam.get_ray(u, v);
-                pixel_color += ray_color(&ray, &world, max_bounce_depth);
+                pixel_color += ray_color(&ray, &world, bounce_depth);
             }
 
-            crate::color::write_color(&mut file, &pixel_color, samples_per_pixel);
+            scanline.buffer[j] = crate::color::process_color(&pixel_color, samples);
         }
-    }
 
-    eprint!("\nDone.\n");
+        tx.send(scanline).unwrap();
+    }
 }

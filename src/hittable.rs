@@ -1,7 +1,7 @@
 use crate::material::{Lambertian, Material};
 use crate::ray::Ray;
 use crate::vec3::*;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct HitRecord {
@@ -9,7 +9,7 @@ pub struct HitRecord {
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
-    pub mat: Rc<dyn Material>,
+    pub mat: Arc<dyn Material>,
 }
 
 impl HitRecord {
@@ -28,7 +28,7 @@ impl HitRecord {
         t: f64,
         r: &Ray,
         outward_normal: &Vec3,
-        mat: Rc<dyn Material>,
+        mat: Arc<dyn Material>,
     ) -> HitRecord {
         let mut front_face = false;
         let normal = HitRecord::get_face_normal(r, outward_normal, &mut front_face);
@@ -48,17 +48,17 @@ impl HitRecord {
             t: 0.0,
             front_face: false,
             normal: Vec3::new(0.0, 0.0, 0.0),
-            mat: Rc::new(Lambertian::new(0.0, 0.0, 0.0)),
+            mat: Arc::new(Lambertian::new(0.0, 0.0, 0.0)),
         }
     }
 }
 
-pub trait Hittable {
+pub trait Hittable: Send + Sync {
     fn hit(&self, r: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool;
 }
 
 pub struct HittableList {
-    pub objects: Vec<Rc<dyn Hittable>>,
+    pub objects: Vec<Arc<dyn Hittable>>,
 }
 
 impl HittableList {
@@ -66,7 +66,7 @@ impl HittableList {
         self.objects.clear();
     }
 
-    pub fn add(&mut self, new_obj: Rc<dyn Hittable>) {
+    pub fn add(&mut self, new_obj: Arc<dyn Hittable>) {
         self.objects.push(new_obj);
     }
 

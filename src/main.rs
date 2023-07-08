@@ -8,6 +8,7 @@ mod sphere;
 mod vec3;
 
 use core::panic;
+use std::env;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
@@ -67,6 +68,16 @@ fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
 }
 
 fn main() {
+    // Threading
+    let args: Vec<String> = env::args().collect();
+    let threads;
+    if args.len() > 1 {
+        threads = args[1].strip_prefix("-j").unwrap().parse().unwrap();
+    } else {
+        threads = thread::available_parallelism().unwrap().get();
+    }
+    eprintln!("Running on {} threads", threads);
+
     // Output file
     let path = Path::new("image.ppm");
     let display = path.display();
@@ -167,7 +178,6 @@ fn main() {
     file.write(header.as_bytes()).unwrap();
 
     let iworld = Arc::new(world);
-    let threads = 12;
     let (tx, rx) = mpsc::channel::<Scanline>();
     let lines_per_thread = image_height / threads;
     let mut joins = Vec::new();
@@ -207,7 +217,6 @@ fn main() {
     let mut image_buffer: Vec<Vec<Color>> =
         vec![vec![Color::new(0.0, 0.0, 0.0); image_width]; image_height];
     for received in rx {
-        println!("received: {}", received.index);
         for (x, c) in received.buffer.iter().enumerate() {
             image_buffer[received.index][x] = *c;
         }
@@ -241,7 +250,7 @@ fn render_thread(
 ) {
     for i in (start..end).rev() {
         let mut scanline = Scanline::new(image_width, i);
-        // eprint!("\rRendering scanline : {} \n", i);
+        eprint!("\rRendering scanline : {} \n", i);
         io::stdout().flush().unwrap();
 
         // Cast a ray at each pixel in the image

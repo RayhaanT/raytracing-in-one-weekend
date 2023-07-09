@@ -42,25 +42,41 @@ struct Tile {
 
 impl Tile {
     pub fn new(height: u32, width: u32, index: u32, image: Image) -> Tile {
+        let mut tile = Tile {
+            start_y: 0,
+            start_x: 0,
+            buffer: Vec::new(),
+        };
+        tile.resize(height, width, index, image);
+
+        tile
+    }
+
+    pub fn resize(&mut self, height: u32, width: u32, index: u32, image: Image) {
         let tiles_wide = (image.width as f32 / width as f32).ceil() as u32;
         let start_y = ((index / tiles_wide) * height) as usize;
         let start_x = ((index % tiles_wide) * width) as usize;
 
+        self.start_x = start_x;
+        self.start_y = start_y;
+
+        if start_y as u32 >= image.height || start_x as u32 >= image.width {
+            return;
+        }
+
         let h = if start_y as u32 + height < image.height {
-            height
+            height as usize
         } else {
-            image.height - start_y as u32
+            image.height as usize - start_y
         };
         let w = if start_x as u32 + width < image.width {
-            width
+            width as usize
         } else {
-            image.width - start_x as u32
+            image.width as usize - start_x
         };
 
-        Tile {
-            start_x,
-            start_y,
-            buffer: vec![vec![Color::new(0.0, 0.0, 0.0); w as usize]; h as usize],
+        if h != self.buffer.len() || w != self.buffer.first().unwrap().len() {
+            self.buffer = vec![vec![Color::new(0.0, 0.0, 0.0); w]; h];
         }
     }
 }
@@ -95,7 +111,7 @@ fn ray_color(r: &Ray, world: &HittableList, depth: u32) -> Color {
 fn main() {
     // Threading
     let args: Vec<String> = env::args().collect();
-    let threads;
+    let mut threads;
     if args.len() > 1 {
         threads = args[1].strip_prefix("-j").unwrap().parse().unwrap();
     } else {
@@ -208,11 +224,11 @@ fn main() {
     let (tx, rx) = mpsc::channel::<Tile>();
 
     let mut requested = 0;
-    let tile_width = 10;
-    let tile_height = 10;
+    let tile_width = 80;
+    let tile_height = 45;
     let total_tiles = (image.width as f32 / tile_width as f32).ceil() as u32
         * (image.height as f32 / tile_height as f32).ceil() as u32;
-    let mut join_handles = Vec::new();
+    threads = threads.min(total_tiles as usize);
 
     // Spawn the original thread group
     for _ in (0..threads).rev() {
@@ -221,15 +237,8 @@ fn main() {
         let world_temp = iworld.clone();
         let tx_temp = tx.clone();
 
-        join_handles.push(thread::spawn(move || {
-            render_tile(
-                Tile::new(tile_height, tile_width, requested, image),
-                cam_temp,
-                world_temp,
-                image,
-                tx_temp,
-            )
-        }));
+        let tile = Tile::new(tile_height, tile_width, requested, image);
+        thread::spawn(move || render_tile(tile, cam_temp, world_temp, image, tx_temp));
 
         requested += 1;
     }
@@ -243,27 +252,25 @@ fn main() {
     // image out into a stripe for each thread because stripes evaluate at
     // different speeds depending on the scene, so some threads exit early
     // This ensures 100% core utilization at the cost of more thread spawns/Arc clones
+    let mut tile: Tile;
     while requested < total_tiles {
         let cam_temp = cam.clone();
         let world_temp = iworld.clone();
         let tx_temp = tx.clone();
 
-        let received = rx.recv().unwrap();
-        thread::spawn(move || {
-            render_tile(
-                Tile::new(tile_height, tile_width, requested, image),
-                cam_temp,
-                world_temp,
-                image,
-                tx_temp,
-            )
-        });
+        tile = rx.recv().unwrap();
 
-        for (y, row) in received.buffer.iter().enumerate() {
+        for (y, row) in tile.buffer.iter().enumerate() {
             for (x, c) in row.iter().enumerate() {
-                image_buffer[received.start_y + y][received.start_x + x] = *c;
+                image_buffer[tile.start_y + y][tile.start_x + x] = *c;
             }
         }
+
+        // Resize the same tile and send it back to the new thread to avoid
+        // unnecessary memory allocations for the tile buffers
+        tile.resize(tile_height, tile_width, requested, image);
+
+        thread::spawn(move || render_tile(tile, cam_temp, world_temp, image, tx_temp));
 
         requested += 1;
     }

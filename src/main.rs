@@ -26,16 +26,41 @@ use crate::ray::Ray;
 use crate::sphere::Sphere;
 use crate::vec3::*;
 
-struct Scanline {
-    buffer: Vec<Vec<Color>>,
-    index: usize,
+#[derive(Clone, Copy)]
+struct Image {
+    height: u32,
+    width: u32,
+    samples: u32,
+    bounce_depth: u32,
 }
 
-impl Scanline {
-    pub fn new(width: usize, batch_size: usize, index: usize) -> Scanline {
-        Scanline {
-            index,
-            buffer: vec![vec![Color::new(0.0, 0.0, 0.0); width]; batch_size],
+struct Tile {
+    buffer: Vec<Vec<Color>>,
+    start_x: usize,
+    start_y: usize,
+}
+
+impl Tile {
+    pub fn new(height: u32, width: u32, index: u32, image: Image) -> Tile {
+        let tiles_wide = (image.width as f32 / width as f32).ceil() as u32;
+        let start_y = ((index / tiles_wide) * height) as usize;
+        let start_x = ((index % tiles_wide) * width) as usize;
+
+        let h = if start_y as u32 + height < image.height {
+            height
+        } else {
+            image.height - start_y as u32
+        };
+        let w = if start_x as u32 + width < image.width {
+            width
+        } else {
+            image.width - start_x as u32
+        };
+
+        Tile {
+            start_x,
+            start_y,
+            buffer: vec![vec![Color::new(0.0, 0.0, 0.0); w as usize]; h as usize],
         }
     }
 }
@@ -85,9 +110,12 @@ fn main() {
     // Image consts
     let aspect_ratio = 16.0 / 9.0;
     let image_width = 1920;
-    let image_height = (image_width as f64 / aspect_ratio) as usize;
-    let samples_per_pixel = 100;
-    let max_bounce_depth = 50;
+    let image = Image {
+        width: image_width,
+        height: (image_width as f64 / aspect_ratio) as u32,
+        samples: 100,
+        bounce_depth: 50,
+    };
 
     // Materials
     let material_ground = Arc::new(Lambertian::new(0.8, 0.8, 0.6));
@@ -173,14 +201,17 @@ fn main() {
         Err(why) => panic!("Could not create {}: {}", display, why),
     };
 
-    let header = format!("P3\n{} {}\n255\n", image_width, image_height);
+    let header = format!("P3\n{} {}\n255\n", image.width, image.height);
     file.write(header.as_bytes()).unwrap();
 
     let iworld = Arc::new(world);
-    let (tx, rx) = mpsc::channel::<Scanline>();
+    let (tx, rx) = mpsc::channel::<Tile>();
 
     let mut requested = 0;
-    let batch_size = 10;
+    let tile_width = 10;
+    let tile_height = 10;
+    let total_tiles = (image.width as f32 / tile_width as f32).ceil() as u32
+        * (image.height as f32 / tile_height as f32).ceil() as u32;
     let mut join_handles = Vec::new();
 
     // Spawn the original thread group
@@ -191,72 +222,58 @@ fn main() {
         let tx_temp = tx.clone();
 
         join_handles.push(thread::spawn(move || {
-            render_line(
-                requested,
-                batch_size,
+            render_tile(
+                Tile::new(tile_height, tile_width, requested, image),
                 cam_temp,
                 world_temp,
-                image_height,
-                image_width,
-                samples_per_pixel,
-                max_bounce_depth,
+                image,
                 tx_temp,
             )
         }));
 
-        requested += batch_size;
+        requested += 1;
     }
 
     // Receive scan lines and write into overall buffer
     let mut image_buffer: Vec<Vec<Color>> =
-        vec![vec![Color::new(0.0, 0.0, 0.0); image_width]; image_height];
+        vec![vec![Color::new(0.0, 0.0, 0.0); image.width as usize]; image.height as usize];
 
     // As each line is received, launch a new thread for the next line
     // Spawn a thread for each scan line instead of blocking the whole
     // image out into a stripe for each thread because stripes evaluate at
     // different speeds depending on the scene, so some threads exit early
     // This ensures 100% core utilization at the cost of more thread spawns/Arc clones
-    while requested < image_height {
+    while requested < total_tiles {
         let cam_temp = cam.clone();
         let world_temp = iworld.clone();
         let tx_temp = tx.clone();
 
-        let batch = if requested + batch_size < image_height {
-            batch_size
-        } else {
-            image_height - requested
-        };
-
         let received = rx.recv().unwrap();
         thread::spawn(move || {
-            render_line(
-                requested,
-                batch,
+            render_tile(
+                Tile::new(tile_height, tile_width, requested, image),
                 cam_temp,
                 world_temp,
-                image_height,
-                image_width,
-                samples_per_pixel,
-                max_bounce_depth,
+                image,
                 tx_temp,
             )
         });
 
-        for (y, line) in received.buffer.iter().enumerate() {
-            for (x, c) in line.iter().enumerate() {
-                image_buffer[received.index + y][x] = *c;
+        for (y, row) in received.buffer.iter().enumerate() {
+            for (x, c) in row.iter().enumerate() {
+                image_buffer[received.start_y + y][received.start_x + x] = *c;
             }
         }
 
-        requested += batch;
+        requested += 1;
     }
 
     // Receive the final thread group since there will still be 1 live batch
     for _ in 0..threads {
         let received = rx.recv().unwrap();
-        for (y, line) in received.buffer.iter().enumerate() {
-            for (x, c) in line.iter().enumerate() {
-                image_buffer[received.index + y][x] = *c;
+        for (y, row) in received.buffer.iter().enumerate() {
+            for (x, c) in row.iter().enumerate() {
+                image_buffer[received.start_y + y][received.start_x + x] = *c;
             }
         }
     }
@@ -274,39 +291,44 @@ fn main() {
     eprint!("\nDone.\n");
 }
 
-fn render_line(
-    start: usize,
-    batch_size: usize,
+fn render_tile(
+    mut tile: Tile,
     cam: Arc<Camera>,
     world: Arc<HittableList>,
-    image_height: usize,
-    image_width: usize,
-    samples: u32,
-    bounce_depth: u32,
-    tx: Sender<Scanline>,
+    image: Image,
+    tx: Sender<Tile>,
 ) {
-    let mut scanline = Scanline::new(image_width, batch_size, start);
+    let h = tile.buffer.len();
+    let w = tile.buffer.first().unwrap().len();
 
-    for i in 0..batch_size {
-        let line = start + i;
-        eprint!("Rendering scanline : {} \n", line);
+    eprint!(
+        "Rendering tile : [{}, {}] - [{}, {}] \n",
+        tile.start_x,
+        tile.start_y,
+        tile.start_x + w,
+        tile.start_y + h
+    );
+
+    for i in 0..h {
+        let line = tile.start_y + i;
         io::stdout().flush().unwrap();
 
         // Cast a ray at each pixel in the image
-        for j in 0..image_width {
+        for j in 0..w {
+            let col = tile.start_x + j;
             let mut pixel_color = Color::new(0.0, 0.0, 0.0);
 
-            for _ in 0..samples {
-                let u = (j as f64 + rand_unit()) / (image_width as f64 - 1.0);
-                let v = (line as f64 + rand_unit()) / (image_height as f64 - 1.0);
+            for _ in 0..image.samples {
+                let u = (col as f64 + rand_unit()) / (image.width as f64 - 1.0);
+                let v = (line as f64 + rand_unit()) / (image.height as f64 - 1.0);
 
                 let ray = cam.get_ray(u, v);
-                pixel_color += ray_color(&ray, &world, bounce_depth);
+                pixel_color += ray_color(&ray, &world, image.bounce_depth);
             }
 
-            scanline.buffer[i][j] = crate::color::process_color(&pixel_color, samples);
+            tile.buffer[i][j] = crate::color::process_color(&pixel_color, image.samples);
         }
     }
 
-    tx.send(scanline).unwrap();
+    tx.send(tile).unwrap();
 }

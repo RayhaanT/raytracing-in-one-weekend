@@ -125,7 +125,7 @@ fn main() {
 
     // Image consts
     let aspect_ratio = 16.0 / 9.0;
-    let image_width = 1920;
+    let image_width = 400;
     let image = Image {
         width: image_width,
         height: (image_width as f64 / aspect_ratio) as u32,
@@ -135,44 +135,44 @@ fn main() {
 
     // Materials
     let material_ground = Arc::new(Lambertian::new(0.8, 0.8, 0.6));
-    // let material_center = Rc::new(Lambertian::new(0.7, 0.3, 0.3));
-    let material_center = Arc::new(Dielectric::new(1.5));
-    let material_left = Arc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
-    let material_right = Arc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
-    // let material_right = Rc::new(Dielectric::new(1.5));
+    let material_diffuse = Arc::new(Lambertian::new(0.7, 0.3, 0.3));
+    // let material_center = Arc::new(Dielectric::new(1.5));
+    let material_metal = Arc::new(Metal::new(0.8, 0.8, 0.8, 0.3));
+    // let material_right = Arc::new(Metal::new(0.8, 0.6, 0.2, 0.9));
+    let material_glass = Arc::new(Dielectric::new(1.5));
 
     // World
     let mut world = HittableList {
         objects: Vec::new(),
     };
     world.add(Arc::new(Sphere::new(
-        Point3::new(0.0, 0.0, -1.0),
-        0.5,
-        material_center.clone(),
-    )));
-    world.add(Arc::new(Sphere::new(
-        Point3::new(0.0, -1000.5, -1.0),
+        Point3::new(0.0, -1000.0, 0.0),
         1000.0,
         material_ground.clone(),
     )));
     world.add(Arc::new(Sphere::new(
-        Point3::new(-1.0, 0.0, -1.0),
-        0.5,
-        material_left.clone(),
+        Point3::new(-4.0, 1.0, 0.0),
+        1.0,
+        material_diffuse.clone(),
     )));
     world.add(Arc::new(Sphere::new(
-        Point3::new(1.0, 0.0, -1.0),
-        0.5,
-        material_right.clone(),
+        Point3::new(0.0, 1.0, 0.0),
+        1.0,
+        material_glass.clone(),
+    )));
+    world.add(Arc::new(Sphere::new(
+        Point3::new(4.0, 1.0, 0.0),
+        1.0,
+        material_metal.clone(),
     )));
 
     // Generate balls
     let radius = 0.2;
-    for x in -10..10 {
-        for z in -10..10 {
+    for x in -11..11 {
+        for z in -11..11 {
             let center = Point3::new(
                 x as f64 + 0.9 * rand_unit(),
-                -0.5 + radius,
+                0.2,
                 z as f64 + 0.9 * rand_unit(),
             );
 
@@ -197,7 +197,7 @@ fn main() {
     }
 
     // Camera
-    let camera_pos = Point3::new(3.0, 1.0, 2.0);
+    let camera_pos = Point3::new(7.5, 1.0, 5.0);
     let look_at = Point3::new(0.0, 0.0, -1.0);
     let world_up = Point3::new(0.0, 1.0, 0.0);
     let dist_to_focus = (camera_pos - look_at).length();
@@ -315,10 +315,10 @@ fn render_tile(
         tile.start_x + w,
         tile.start_y + h
     );
+    io::stderr().flush().unwrap();
 
     for i in 0..h {
         let line = tile.start_y + i;
-        io::stdout().flush().unwrap();
 
         // Cast a ray at each pixel in the image
         for j in 0..w {
